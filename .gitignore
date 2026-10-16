@@ -1,0 +1,65 @@
+# ===== 浏览器 profile（Edge CDP 登录态，800M + 敏感 cookie）=====
+_edge_cdp_profile/
+
+# ===== Python 缓存 =====
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== 调试截图（临时产物，可重新生成）=====
+_debug_*.jpg
+_debug_*.png
+debug_*.jpg
+debug_*.png
+
+# ===== 虚拟屏驱动（第三方二进制，非膜代码）=====
+parsec_vdd/
+parsec_vdd_new/
+IddSampleDriver/
+_parsec_vdd_portable.zip
+IddSampleDriver.zip
+
+# ===== 视觉输出缓存 =====
+vision_output/
+
+# ===== 临时文件 / 日志 =====
+tmp_click_target.json
+@AutomationLog.txt
+
+# ===== SQLite 数据库（运行时生成物，migrate 脚本可重建）=====
+membrane.db
+membrane.db.bak_*
+
+# ===== 所有 _ 前缀 = 临时/调试/敏感产物（截图/日志/tmp脚本/profile/简历/OCR/二维码）=====
+_*
+
+# ===== 日志 =====
+*.log
+
+# ===== 千牛页面爬取快照（数据产物，可重爬，含店铺业务数据）=====
+store/apps/qianniu/pages/
+
+# ===== 业务数据（商品图/验证截图，非代码）=====
+detail_imgs/
+verify/
+verify_shots/
+
+# ===== 运行时状态文件（坐标/进度/URL）=====
+launch_state.json
+launch_boss_state.json
+crawl_deep_state.json
+crawl_lv_state.json
+crawl_modal_state.json
+verify_state.json
+verify_nav_urls.json
+
+# ===== 前端依赖与构建产物 =====
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.stubs/
+
+# ===== 散落截图 =====
+副屏截图.png
+popup_shot.jpg
+shot_qianniu_goods.png
+shot_qianniu_goods_small.png

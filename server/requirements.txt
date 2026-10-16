@@ -1,0 +1,2 @@
+# API 服务依赖：引用根目录完整清单
+-r ../requirements.txt

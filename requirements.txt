@@ -1,0 +1,12 @@
+# 膜 3.0 后端依赖（Windows 专用）
+# 安装：pip install -r requirements.txt
+# 注意：uiautomation / pywin32 / Pillow.ImageGrab 依赖 Windows，Linux 上装不了（膜定位桌面自动化）。
+
+flask>=2.0              # server/api_server.py — Flask API 后端
+requests>=2.28          # membrane_operator.py(DeepSeek) / popup_clear.py(Ollama) — HTTP 调用
+websocket-client>=1.5   # membrane_vision.py / coordinator.py / crawl_*.py — Edge CDP(9222) 连接
+uiautomation            # membrane_vision.py — Windows UIA 扫描（眼睛）
+numpy                   # membrane_vision.py — 图像/数组处理
+Pillow>=9.0             # popup_clear.py / server/api_server.py / membrane_vision.py — 截图(ImageGrab)+图像
+opencv-python>=4.7      # membrane_vision.py — cv2 图像处理
+pywin32                 # launch_client.py — win32com 生成快捷方式启动客户端

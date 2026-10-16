@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>膜 · 千牛爬取实时进度</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0d1117; color: #e9ecef;
+    font-family: "Segoe UI","Microsoft YaHei",system-ui,sans-serif; padding: 20px 24px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: #7d8b9f; margin-bottom: 18px; }
+  .sub b { color: #adb5bd; }
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .card { background: #161f2c; border: 1px solid #232c3d; border-radius: 10px;
+    padding: 14px 18px; min-width: 220px; }
+  .card .label { font-size: 11px; color: #7d8b9f; margin-bottom: 6px; }
+  .card .big { font-size: 24px; font-weight: 700; }
+  .card .big .unit { font-size: 13px; color: #7d8b9f; font-weight: 400; }
+  .done { color: #63e6be; } .running { color: #ffa94d; }
+  .bar { height: 8px; background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .bar > i { display: block; height: 100%; background: #63e6be; width: 0; transition: width .6s; }
+  .card.running .bar > i { background: #ffa94d; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #1a2332; }
+  th { color: #7d8b9f; font-weight: 500; font-size: 11px; }
+  .nav-row td { background: #121a26; font-weight: 600; border-top: 1px solid #232c3d; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .has-modal { color: #ffa94d; font-weight: 600; }
+  #updated { font-size: 11px; color: #5b6b82; margin-top: 14px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.running { background: #ffa94d; animation: pulse 1.2s infinite; }
+  .dot.done { background: #63e6be; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+</style>
+</head>
+<body>
+<h1>膜 · 千牛全站爬取 · 实时进度</h1>
+<div class="sub">P1 深爬 + P2 弹窗/Tab <b>均已全部完成</b> · 成果已合并进 membrane.db（101 url_key / 22238 元素）· 每 3 秒自动刷新，也可手动刷新</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="label"><span class="dot done"></span>P1 深爬（已完成）</div>
+    <div class="big done"><span id="p1pages">—</span><span class="unit"> 页 / </span><span id="p1els">—</span><span class="unit"> 元素</span></div>
+    <div class="bar"><i style="width:100%"></i></div>
+  </div>
+  <div class="card">
+    <div class="label"><span class="dot done"></span>P2 弹窗/Tab（已完成）</div>
+    <div class="big done"><span id="p2pages">—</span><span class="unit"> 页 / </span><span id="p2modals">—</span><span class="unit"> 页抓到弹窗</span></div>
+    <div class="bar"><i id="p2bar"></i></div>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>导航</th><th>页面</th><th class="num">元素</th><th class="num">Tab</th><th class="num">弹窗</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div id="updated">等待数据…</div>
+
+<script>
+const NAVS = [["1.1","首页"],["1.2","常用"],["1.3","交易"],["1.4","商品"],["1.5","营销"],
+              ["1.6","推广"],["1.7","客服"],["1.8","店铺"],["1.9","私域"],["1.10","财务"],
+              ["1.11","金融"],["1.12","数据"],["1.13","服务"]];
+const NAV_IDX = Object.fromEntries(NAVS.map((n,i)=>[n[0],i]));
+const NAV_LABEL = Object.fromEntries(NAVS);
+
+const navOf = k => k.split('_')[0];
+const isMain = k => !k.includes('_');
+
+function sortKeys(keys) {
+  return keys.slice().sort((a,b) => {
+    const na = navOf(a), nb = navOf(b);
+    if (na !== nb) return (NAV_IDX[na]??99) - (NAV_IDX[nb]??99);
+    return a.localeCompare(b, 'zh', {numeric:true});
+  });
+}
+
+let deep = null;
+async function loadDeep() {
+  try { deep = await (await fetch('/crawl_deep_state.json', {cache:'no-store'})).json(); }
+  catch(e) { deep = null; }
+}
+
+async function tick() {
+  let modal = null;
+  try { modal = await (await fetch('/crawl_modal_state.json', {cache:'no-store'})).json(); }
+  catch(e) { modal = null; }
+  render(modal);
+}
+
+function render(modal) {
+  const md = modal && modal.done ? modal.done : {};
+  const p2keys = Object.keys(md);
+
+  if (deep && deep.done) {
+    const d = deep.done;
+    document.getElementById('p1pages').textContent = Object.keys(d).length;
+    document.getElementById('p1els').textContent = Object.values(d).reduce((a,b)=>a+b,0);
+    const p2modals = p2keys.filter(k => (md[k].modals||0) > 0).length;
+    document.getElementById('p2modals').textContent = p2modals;
+    document.getElementById('p2bar').style.width =
+      Math.min(100, p2keys.length / Object.keys(d).length * 100) + '%';
+  }
+  document.getElementById('p2pages').textContent = p2keys.length;
+
+  const rows = document.getElementById('rows');
+  rows.innerHTML = '';
+  const grouped = {};
+  for (const k of p2keys) (grouped[navOf(k)] ||= []).push(k);
+
+  for (const [nid, label] of NAVS) {
+    const keys = grouped[nid] || [];
+    if (!keys.length) continue;
+    const sEl = keys.reduce((a,k)=>a+(md[k].elements||0),0);
+    const sTab = keys.reduce((a,k)=>a+(md[k].tabs||0),0);
+    const sModal = keys.filter(k=>(md[k].modals||0)>0).length;
+    const navRow = document.createElement('tr');
+    navRow.className = 'nav-row';
+    navRow.innerHTML = `<td>${label}</td><td>${keys.length} 个页面</td><td class="num">${sEl}</td><td class="num">${sTab}</td><td class="num${sModal?' has-modal':''}">${sModal}</td>`;
+    rows.appendChild(navRow);
+
+    for (const k of sortKeys(keys)) {
+      const v = md[k];
+      const name = isMain(k) ? label + '（主页）' : '子菜单 ' + k.split('_').slice(1).join('.');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td></td><td style="padding-left:22px;color:#adb5bd">${name}</td><td class="num">${v.elements||0}</td><td class="num">${v.tabs||0}</td><td class="num${(v.modals||0)?' has-modal':''}">${v.modals||0}</td>`;
+      rows.appendChild(tr);
+    }
+  }
+  document.getElementById('updated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+}
+
+loadDeep().then(() => tick());
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

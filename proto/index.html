@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>膜 · 3D 工作流分层图</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1117;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: #e9ecef; }
+  #canvas { position: absolute; inset: 0; }
+  #canvas canvas { display: block; }
+  #info { position: absolute; top: 14px; left: 14px; padding: 7px 13px;
+    background: rgba(13,17,23,.82); border: 1px solid #3b4a63; border-radius: 7px;
+    font-size: 13px; color: #adb5bd; pointer-events: none; backdrop-filter: blur(4px); max-width: 46%; }
+  #toolbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; z-index: 10; }
+  #toolbar button { padding: 8px 16px; border-radius: 8px; border: 1px solid #3b4a63;
+    background: #161f2c; color: #e9ecef; cursor: pointer; font-size: 13px; }
+  #toolbar button:hover { background: #1f2a3a; }
+  #toolbar .primary { background: #1f6f54; border-color: #63e6be; color: #63e6be; }
+  #toolbar .primary:hover { background: #258a68; }
+  #sideBtns { position: absolute; top: 58px; left: 14px; display: flex;
+    flex-direction: column; gap: 8px; z-index: 10; }
+  #sideBtns button { padding: 8px 14px; border-radius: 8px; border: 1px solid #3b4a63;
+    background: #161f2c; color: #e9ecef; cursor: pointer; font-size: 13px;
+    text-align: left; white-space: nowrap; }
+  #sideBtns button:hover { background: #1f2a3a; }
+  #panel { position: absolute; top: 0; right: 0; bottom: 0; width: 360px;
+    background: rgba(13,17,23,.93); border-left: 1px solid #232c3d;
+    display: flex; flex-direction: column; backdrop-filter: blur(6px); }
+  #panel h2 { margin: 0; padding: 16px 18px 10px; font-size: 15px; font-weight: 600;
+    color: #e9ecef; border-bottom: 1px solid #232c3d; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 18px;
+    font-size: 11px; color: #7d8b9f; border-bottom: 1px solid #232c3d; }
+  .legend span::before { content: "●"; margin-right: 4px; }
+  .legend .btn::before { color: #ff7a45; } .legend .link::before { color: #4dabf7; }
+  .legend .input::before { color: #51cf66; }
+  .hint { padding: 8px 18px; font-size: 11px; color: #5b6b82; }
+  #tree { flex: 1; overflow: auto; padding: 6px 12px 16px; min-height: 80px; }
+  .tree-node { margin-left: 0; }
+  .tree-state { padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; color: #e9ecef; }
+  .tree-state:hover { background: #1a2332; }
+  .tree-state.active { background: #1f3a33; color: #63e6be; }
+  .tree-branch { padding: 2px 8px 2px 22px; font-size: 12px; color: #7d8b9f;
+    cursor: pointer; border-left: 1px dashed #2c3748; margin-left: 14px; }
+  .tree-branch:hover { color: #63e6be; }
+  .tree-children { margin-left: 12px; border-left: 1px solid #232c3d; padding-left: 6px; }
+  .loop { color: #ffa94d; }
+
+  /* 工作流序列区 */
+  #workflow { border-top: 1px solid #232c3d; padding: 12px 14px; max-height: 44%;
+    display: flex; flex-direction: column; }
+  #workflow h3 { margin: 0 0 10px; font-size: 13px; color: #adb5bd; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between; }
+  #workflow h3 .count { color: #63e6be; font-weight: 700; }
+  #steps { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; overflow: auto; }
+  #wf-empty { font-size: 12px; color: #5b6b82; padding: 6px 2px; }
+  .step-mod { display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border-radius: 8px; background: #161f2c; border: 1px solid #2c3748; }
+  .step-mod .num { width: 20px; height: 20px; border-radius: 50%; background: #63e6be;
+    color: #0a0e16; font-size: 12px; font-weight: 700; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; }
+  .step-mod .txt { font-size: 12px; color: #e9ecef; white-space: nowrap; }
+  .step-mod.op { border-color: #4dabf7; background: #1a2332; }
+  .step-mod.op .txt { color: #4dabf7; }
+  .plus { width: 22px; height: 22px; border-radius: 50%; border: 1px dashed #3b4a63;
+    background: transparent; color: #5b6b82; cursor: pointer; font-size: 15px;
+    line-height: 1; flex: 0 0 auto; padding: 0; }
+  .plus:hover { color: #63e6be; border-color: #63e6be; }
+
+  /* 操作选择弹窗 */
+  #opPicker { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none;
+    align-items: center; justify-content: center; z-index: 20; }
+  #opPicker.show { display: flex; }
+  #opPicker .box { background: #161f2c; border: 1px solid #3b4a63; border-radius: 12px;
+    padding: 16px; min-width: 230px; }
+  #opPicker .box h4 { margin: 0 0 10px; font-size: 14px; color: #e9ecef; }
+  #opPicker .opt { display: block; width: 100%; text-align: left; padding: 9px 12px;
+    margin: 5px 0; background: #1a2332; border: 1px solid #2c3748; border-radius: 7px;
+    color: #e9ecef; cursor: pointer; font-size: 13px; }
+  #opPicker .opt:hover { border-color: #63e6be; color: #63e6be; }
+  #opPicker .cancel { margin-top: 8px; width: 100%; padding: 7px; background: transparent;
+    border: none; color: #7d8b9f; cursor: pointer; font-size: 12px; }
+
+  /* 千牛记忆团爬取成果面板 */
+  #crawlPanel { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; z-index: 30; }
+  #crawlPanel.show { display: flex; }
+  #crawlPanel .crawl-box { background: #161f2c; border: 1px solid #3b4a63; border-radius: 12px;
+    width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+  .crawl-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid #232c3d; }
+  .crawl-head h4 { margin: 0; font-size: 15px; color: #e9ecef; }
+  .crawl-close { background: transparent; border: none; color: #7d8b9f; font-size: 17px;
+    cursor: pointer; padding: 2px 6px; }
+  .crawl-close:hover { color: #e9ecef; }
+  .crawl-cards { display: flex; gap: 12px; flex-wrap: wrap; padding: 14px 18px;
+    border-bottom: 1px solid #232c3d; }
+  .crawl-card { background: #0f1722; border: 1px solid #232c3d; border-radius: 8px;
+    padding: 10px 14px; min-width: 150px; flex: 1 1 auto; }
+  .crawl-card .l { font-size: 11px; color: #7d8b9f; }
+  .crawl-card .b { font-size: 21px; font-weight: 700; color: #63e6be; margin-top: 4px; }
+  .crawl-card .b small { font-size: 12px; color: #7d8b9f; font-weight: 400; }
+  .crawl-table-wrap { overflow: auto; padding: 10px 18px; flex: 1; }
+  .crawl-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .crawl-table-wrap th, .crawl-table-wrap td { text-align: left; padding: 5px 8px;
+    border-bottom: 1px solid #1a2332; }
+  .crawl-table-wrap th { color: #7d8b9f; font-weight: 500; font-size: 11px; }
+  .crawl-table-wrap .nav-row td { background: #121a26; font-weight: 600; border-top: 1px solid #232c3d; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .crawl-foot { padding: 9px 18px; font-size: 11px; color: #5b6b82; border-top: 1px solid #232c3d; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="canvas"></div>
+<div id="info">旋转/缩放看分层 · 悬停看元素 · 点「进入编辑」开始选路径</div>
+<div id="sideBtns">
+  <button id="btnGlobal">🌐 全局模式</button>
+  <button id="btnBack">⬆ 回到上一级</button>
+  <button id="btnCancelSel" hidden>✖ 取消选定</button>
+</div>
+<div id="toolbar">
+  <button id="btnEdit" class="primary">✏️ 进入编辑</button>
+  <button id="btnEndEdit" hidden>✓ 结束编辑</button>
+  <button id="btnSave" hidden>💾 保存工作流</button>
+  <button id="btnCrawl">📊 千牛记忆团</button>
+</div>
+<div id="panel">
+  <h2>路径浏览</h2>
+  <div class="legend">
+    <span class="btn">按钮</span><span class="link">链接</span><span class="input">输入框</span>
+  </div>
+  <div class="hint">从根状态出发，每条分支 = 点了一个元素</div>
+  <div id="tree"></div>
+  <div id="workflow">
+    <h3>工作流序列 <span class="count" id="wfCount"></span></h3>
+    <div id="wf-empty">进入编辑模式后，沿路径点选元素生成步骤</div>
+    <div id="steps"></div>
+  </div>
+</div>
+
+<div id="opPicker">
+  <div class="box">
+    <h4>插入操作</h4>
+    <button class="opt" data-op="verify">🔍 校验</button>
+    <button class="opt" data-op="confirm">👷 工人确认</button>
+    <button class="opt" data-op="compare">⚖️ 数据比对</button>
+    <button class="opt" data-op="require">📋 要求</button>
+    <button class="cancel" id="opCancel">取消</button>
+  </div>
+</div>
+
+<div id="crawlPanel">
+  <div class="crawl-box">
+    <div class="crawl-head">
+      <h4>千牛记忆团 · 爬取成果</h4>
+      <button class="crawl-close" id="crawlClose">✕</button>
+    </div>
+    <div class="crawl-cards">
+      <div class="crawl-card"><div class="l">P1 深爬（主视图+滚动+折叠）</div>
+        <div class="b"><span id="c_p1pages">—</span><small> 页 / </small><span id="c_p1els">—</span><small> 元素</small></div></div>
+      <div class="crawl-card"><div class="l">P2 弹窗/Tab 爬取</div>
+        <div class="b"><span id="c_p2states">—</span><small> 状态 / </small><span id="c_p2modal">—</span><small> 页有弹窗</small></div></div>
+      <div class="crawl-card"><div class="l">随机抽查验证</div>
+        <div class="b"><span id="c_verify">20/20</span><small> 截屏正常</small></div></div>
+    </div>
+    <div class="crawl-table-wrap">
+      <table>
+        <thead><tr><th>导航</th><th>页面</th><th class="num">元素(深)</th><th class="num">Tab</th><th class="num">弹窗</th></tr></thead>
+        <tbody id="crawlRows"></tbody>
+      </table>
+    </div>
+    <div class="crawl-foot" id="crawlFoot">正在读取 crawl_deep_state.json / crawl_modal_state.json …</div>
+  </div>
+</div>
+
+<script src="./3d_data.js?v=20260930-fullscreen"></script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const DATA = window.DATA;
+const PW = DATA.plane_width, PH = DATA.plane_height;
+const TYPE_COLOR = { button: 0xff7a45, a: 0x4dabf7, input: 0x51cf66,
+                     textarea: 0xcc5de8, default: 0xadb5bd };
+const EDGE_COLOR = 0x63e6be;
+const OP_TYPES = { verify: '🔍 校验', confirm: '👷 工人确认',
+                   compare: '⚖️ 数据比对', require: '📋 要求' };
+
+// ---- 场景 / 相机 / 渲染 ----
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e16);
+
+// 自适应视图：按 3D 包围盒定相机距离 / 雾范围，从上前方俯视（立体看环 + 高度起伏）
+{
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const s of DATA.states) {
+    if (s.x < minX) minX = s.x;
+    if (s.x > maxX) maxX = s.x;
+    if (s.y < minY) minY = s.y;
+    if (s.y > maxY) maxY = s.y;
+    if (s.z < minZ) minZ = s.z;
+    if (s.z > maxZ) maxZ = s.z;
+  }
+  const CENTER_X = (minX + maxX) / 2;
+  const CENTER_Y = (minY + maxY) / 2;
+  const CENTER_Z = (minZ + maxZ) / 2;
+  const halfDiag = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2;
+  const CAM_DIST = Math.max(halfDiag * 1.7, 3200);
+  scene.fog = new THREE.Fog(0x0a0e16, CAM_DIST * 0.7, CAM_DIST * 1.9);
+  window.__VIEW = { CENTER_X, CENTER_Y, CENTER_Z, CAM_DIST, SPAN_X: maxX - minX };
+}
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 1, 120000);
+camera.position.set(window.__VIEW.CENTER_X, window.__VIEW.CENTER_Y + window.__VIEW.CAM_DIST * 0.55, window.__VIEW.CENTER_Z + window.__VIEW.CAM_DIST * 0.85);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.getElementById('canvas').appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.85, 0.5, 0.28);
+composer.addPass(bloom);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.getElementById('canvas').appendChild(labelRenderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(window.__VIEW.CENTER_X, window.__VIEW.CENTER_Y, window.__VIEW.CENTER_Z);
+controls.addEventListener('start', () => { fly = null; });  // 用户手动拖拽/缩放时取消自动飞行
+
+// ---- 相机聚焦系统：点击面板平滑飞到目标，支持「回到上一级」历史栈 ----
+const globalTarget = controls.target.clone();
+const globalCamPos = camera.position.clone();
+let fly = null;              // { target: Vector3, camPos: Vector3 }
+let currentFocus = null;     // 当前聚焦状态 id
+const focusStack = [];       // 聚焦历史栈（回上一级用）
+let focusMode = false;       // 伪全屏聚焦：只渲染聚焦面板，禁缩放/平移，点空隙回全局
+
+function startFly(target, camPos) {
+  fly = { target: target.clone(), camPos: camPos.clone() };
+}
+
+function flyToState(id) {
+  const g = stateGroups[id];
+  if (!g) return;
+  const p = new THREE.Vector3();
+  g.getWorldPosition(p);
+  const dist = Math.max(PW, PH) * 0.9;   // 尽量全屏（面板占约 65%），留边缘空隙
+  const camPos = p.clone();
+  camPos.z += dist;            // 面板面对 +z，相机移到面板前方
+  camPos.y += dist * 0.15;     // 略抬高俯视
+  startFly(p, camPos);
+}
+
+function flyToGlobal() {
+  startFly(globalTarget, globalCamPos);
+}
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+dir.position.set(600, 1000, 1500);
+scene.add(dir);
+
+const grid = new THREE.GridHelper(window.__VIEW.SPAN_X * 1.3, 48, 0x1c2a3d, 0x141d2c);
+grid.position.y = -PH / 2 - 300;
+scene.add(grid);
+
+function stateLabel(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  d.style.cssText = 'color:#dbe4f0;font-size:14px;font-weight:600;letter-spacing:.5px;' +
+    'background:rgba(10,14,22,.9);padding:3px 12px;border-radius:6px;' +
+    'border:1px solid #4dabf7;white-space:nowrap;box-shadow:0 0 12px rgba(77,171,247,.35);';
+  return d;
+}
+
+// ---- 状态平面 ----
+const stateMeshes = {};
+const stateBorders = {};
+const stateGroups = {};
+const stateLabels = {};
+DATA.states.forEach(s => {
+  const g = new THREE.Group();
+  g.position.set(s.x, s.y, s.z);
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(PW, PH),
+    new THREE.MeshStandardMaterial({ color: 0x1a2332, transparent: true, opacity: 0.35,
+      roughness: 0.5, metalness: 0.2, side: THREE.DoubleSide })
+  );
+  plane.userData = { stateId: s.id };
+  const border = new THREE.LineSegments(
+    new THREE.EdgesGeometry(plane.geometry),
+    new THREE.LineBasicMaterial({ color: 0x4dabf7 })
+  );
+  const label = new CSS2DObject(stateLabel(s.name));
+  label.position.set(0, PH / 2 + 24, 0);
+  g.add(plane, border, label);
+  stateLabels[s.id] = label;
+  scene.add(g);
+  stateMeshes[s.id] = plane;
+  stateBorders[s.id] = border;
+  stateGroups[s.id] = g;
+});
+
+// ---- 元素 ----
+const elemMeshMap = {};
+const elemMeshes = [];
+DATA.elements.forEach(e => {
+  const c = TYPE_COLOR[e.type] || TYPE_COLOR.default;
+  const isOp = e.has_out;
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(isOp ? 12 : 6, 24, 24),
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: c,
+      emissiveIntensity: isOp ? 1.4 : 0.35, roughness: 0.3, metalness: 0.1 })
+  );
+  mesh.position.set(e.x, e.y, e.z);
+  mesh.userData = { id: e.id, name: e.name, type: e.type, state_id: e.state_id };
+  scene.add(mesh);
+  elemMeshes.push(mesh);
+  elemMeshMap[e.id] = mesh;
+  if (isOp) {
+    const lbl = new CSS2DObject(elemLabel(e.name));
+    lbl.position.set(0, 24, 0);
+    mesh.add(lbl);
+    mesh.userData.labelEl = lbl.element;   // 伪全屏隐藏时同步切 CSS2D DOM
+  }
+});
+
+function elemLabel(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  d.style.cssText = 'color:#c9d4e3;font-size:11px;background:rgba(10,14,22,.85);' +
+    'padding:1px 6px;border-radius:4px;border:1px solid #2c3748;white-space:nowrap;';
+  return d;
+}
+
+// ---- 边 ----
+const edgeTubes = [];
+DATA.edges.forEach(ed => {
+  const f = ed.from, t = ed.to;
+  const midZ = (f.z + t.z) / 2;
+  const curve = new THREE.CubicBezierCurve3(
+    new THREE.Vector3(f.x, f.y, f.z),
+    new THREE.Vector3(f.x, f.y, midZ),
+    new THREE.Vector3(t.x, t.y, midZ),
+    new THREE.Vector3(t.x, t.y, t.z)
+  );
+  const tube = new THREE.Mesh(
+    new THREE.TubeGeometry(curve, 40, 2.5, 10, false),
+    new THREE.MeshStandardMaterial({ color: 0x000000, emissive: EDGE_COLOR,
+      emissiveIntensity: 0.85, roughness: 0.4 })
+  );
+  scene.add(tube);
+  edgeTubes.push(tube);
+});
+
+// ---- 编辑模式状态 ----
+let editMode = false;
+let currentStateId = DATA.root;
+let steps = [];  // {type:'click'|'verify'|'confirm'|'compare'|'require', ...}
+const stepLabelObjs = [];  // 步骤号标签，重新编辑时清除
+
+const info = document.getElementById('info');
+
+function clearStepLabels() {
+  stepLabelObjs.forEach(lbl => lbl.parent && lbl.parent.remove(lbl));
+  stepLabelObjs.length = 0;
+}
+
+function refreshEditHighlight() {
+  DATA.elements.forEach(e => {
+    const m = elemMeshMap[e.id];
+    if (!m) return;
+    const active = editMode && e.state_id === currentStateId && e.has_out;
+    m.material.emissiveIntensity = active ? 2.2 : (e.has_out ? 1.4 : 0.35);
+    m.scale.setScalar(active ? 1.5 : 1);
+  });
+  Object.keys(stateMeshes).forEach(sid => {
+    const cur = editMode && sid === currentStateId;
+    stateMeshes[sid].material.opacity = cur ? 0.6 : 0.35;
+    stateBorders[sid].material.color.set(cur ? 0x63e6be : 0x4dabf7);
+  });
+}
+
+function stepLabel(n) {
+  const d = document.createElement('div');
+  d.textContent = n;
+  d.style.cssText = 'color:#0a0e16;font-size:13px;font-weight:700;background:#63e6be;' +
+    'width:22px;height:22px;border-radius:50%;display:flex;align-items:center;' +
+    'justify-content:center;box-shadow:0 0 12px rgba(99,230,190,.9);';
+  return d;
+}
+
+function enterEdit() {
+  if (focusMode) exitToGlobal();   // 编辑要看全图，先退出伪全屏聚焦
+  editMode = true;
+  currentStateId = DATA.root;
+  steps = [];
+  clearStepLabels();
+  document.getElementById('btnEdit').hidden = true;
+  document.getElementById('btnEndEdit').hidden = false;
+  document.getElementById('btnSave').hidden = false;
+  document.getElementById('btnCancelSel').hidden = false;
+  info.textContent = '编辑模式：点击高亮界面上的发光元素，标注第 1 步';
+  refreshEditHighlight();
+  renderSteps();
+}
+
+function endEdit() {
+  editMode = false;
+  document.getElementById('btnEdit').hidden = false;
+  document.getElementById('btnEndEdit').hidden = true;
+  document.getElementById('btnCancelSel').hidden = true;
+  info.textContent = steps.length
+    ? `已结束编辑，共 ${steps.length} 步 · 可「保存工作流」导出`
+    : '已结束编辑（未选任何步骤）';
+  refreshEditHighlight();
+}
+
+function saveWorkflow() {
+  if (!steps.length) { info.textContent = '还没有步骤，先进入编辑模式选路径'; return; }
+  const wf = { name: '发货流程', steps };
+  const blob = new Blob([JSON.stringify(wf, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'workflow.json';
+  a.click();
+  info.textContent = `已导出 workflow.json（${steps.length} 步）`;
+}
+
+// ---- 点击选择（编辑模式） ----
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let downX = 0, downY = 0;
+renderer.domElement.addEventListener('pointerdown', e => {
+  downX = e.clientX; downY = e.clientY;
+});
+
+renderer.domElement.addEventListener('click', e => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return;  // 拖拽后忽略，避免误触发
+  pointer.x = (e.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  // 编辑模式：点元素选路径
+  if (editMode) {
+    const hits = raycaster.intersectObjects(elemMeshes);
+    if (hits.length) {
+      const mesh = hits[0].object;
+      const elem = DATA.elements.find(x => x.id === mesh.userData.id);
+      if (elem && elem.has_out && elem.state_id === currentStateId) {
+        const edge = DATA.edges.find(ed => ed.from_element === elem.id && ed.from_state === elem.state_id);
+        if (edge) {
+          steps.push({ type: 'click', element_id: elem.id, element_name: elem.name,
+                       from_state: elem.state_id, to_state: edge.to_state, edge_id: edge.id });
+          const n = steps.length;
+          const lbl = new CSS2DObject(stepLabel(n));
+          lbl.position.set(0, -26, 0);
+          mesh.add(lbl);
+          stepLabelObjs.push(lbl);
+          currentStateId = edge.to_state;
+          info.textContent = `第 ${n} 步：点「${elem.name}」→ 前进到 ${stateName(edge.to_state)}`;
+          refreshEditHighlight();
+          renderSteps();
+          return;
+        }
+      }
+      info.textContent = '请点击当前高亮界面（青色边框）上的发光元素';
+      return;
+    }
+    // 编辑模式没点中元素 → 继续落到面板聚焦
+  }
+
+  // 点击面板/元素 → 聚焦对应状态（只点可见的；聚焦模式下隐藏的不能被点中）
+  const focusHits = raycaster.intersectObjects([...Object.values(stateMeshes), ...elemMeshes])
+    .filter(h => {
+      const o = h.object;
+      if (o.userData.stateId) return stateGroups[o.userData.stateId].visible;
+      return o.visible;
+    });
+  if (focusHits.length) {
+    const obj = focusHits[0].object;
+    let sid = obj.userData.stateId;
+    if (!sid) {
+      const elem = DATA.elements.find(x => x.id === obj.userData.id);
+      sid = elem && elem.state_id;
+    }
+    if (sid) focusState(sid);
+    return;
+  }
+
+  // 非编辑模式点空白 → 聚焦模式下回全局（全局模式点空白不动作）
+  if (!editMode && focusMode) exitToGlobal();
+});
+
+function stateName(id) { return (DATA.states.find(s => s.id === id) || {}).name || id; }
+
+// ---- 序列区渲染 ----
+function renderSteps() {
+  const box = document.getElementById('steps');
+  const empty = document.getElementById('wf-empty');
+  const count = document.getElementById('wfCount');
+  box.innerHTML = '';
+  count.textContent = steps.length ? `${steps.length} 步` : '';
+  empty.style.display = steps.length ? 'none' : 'block';
+  steps.forEach((s, i) => {
+    const mod = document.createElement('div');
+    mod.className = 'step-mod' + (s.type === 'click' ? '' : ' op');
+    if (s.type === 'click') {
+      mod.innerHTML = `<div class="num">${i + 1}</div><div class="txt">点「${s.element_name}」</div>`;
+    } else {
+      mod.innerHTML = `<div class="txt">${OP_TYPES[s.type] || s.type}</div>`;
+    }
+    box.appendChild(mod);
+    const plus = document.createElement('button');
+    plus.className = 'plus';
+    plus.textContent = '+';
+    plus.title = '在此插入操作';
+    plus.onclick = () => pickOp(i + 1);
+    box.appendChild(plus);
+  });
+}
+
+// ---- 插入操作 ----
+let opPickerTarget = null;
+function pickOp(pos) {
+  opPickerTarget = pos;
+  document.getElementById('opPicker').classList.add('show');
+}
+document.querySelectorAll('#opPicker .opt').forEach(b => {
+  b.onclick = () => {
+    steps.splice(opPickerTarget, 0, { type: b.dataset.op });
+    document.getElementById('opPicker').classList.remove('show');
+    renderSteps();
+  };
+});
+document.getElementById('opCancel').onclick = () =>
+  document.getElementById('opPicker').classList.remove('show');
+
+// ---- 路径树 ----
+const treeEl = document.getElementById('tree');
+function renderTree(node, container) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tree-node';
+  const st = document.createElement('div');
+  st.className = 'tree-state';
+  st.dataset.id = node.id;
+  st.textContent = node.name + (node.loop ? ' ↻' : '') + (node.truncated ? ' …' : '');
+  if (node.loop) st.classList.add('loop');
+  st.onclick = () => focusState(node.id);
+  wrap.appendChild(st);
+  const kids = document.createElement('div');
+  kids.className = 'tree-children';
+  (node.children || []).forEach(c => {
+    const br = document.createElement('div');
+    br.className = 'tree-branch';
+    br.textContent = `↳ ${c.action}:${c.element || '自动'}`;
+    br.onclick = () => focusState(c.to.id);
+    kids.appendChild(br);
+    renderTree(c.to, kids);
+  });
+  wrap.appendChild(kids);
+  container.appendChild(wrap);
+}
+renderTree(DATA.path_tree, treeEl);
+
+function highlightState(id) {
+  Object.values(stateMeshes).forEach(m => m.material.color.set(0x1a2332));
+  const m = stateMeshes[id];
+  if (!m) return;
+  m.material.color.set(0x1f6f54);
+  document.querySelectorAll('.tree-state').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === id));
+}
+
+function clearHighlight() {
+  Object.values(stateMeshes).forEach(m => m.material.color.set(0x1a2332));
+  document.querySelectorAll('.tree-state').forEach(el =>
+    el.classList.remove('active'));
+}
+
+function setFocusVisibility(focusId) {
+  // 伪全屏：聚焦时只渲染聚焦面板 + 它的元素，隐藏其余面板/元素/边（避免背景重叠）
+  Object.keys(stateGroups).forEach(sid => {
+    const show = !focusId || sid === focusId;
+    stateGroups[sid].visible = show;
+    const lbl = stateLabels[sid];
+    if (lbl && lbl.element) lbl.element.style.display = show ? '' : 'none';
+  });
+  elemMeshes.forEach(m => {
+    const show = !focusId || m.userData.state_id === focusId;
+    m.visible = show;
+    if (m.userData.labelEl) m.userData.labelEl.style.display = show ? '' : 'none';
+  });
+  edgeTubes.forEach(t => { t.visible = !focusId; });
+}
+
+function focusState(id) {
+  // 统一聚焦入口：高亮 + 相机飞过去 + 记录历史（供「回到上一级」）
+  if (currentFocus && currentFocus !== id) focusStack.push(currentFocus);
+  currentFocus = id;
+  focusMode = true;
+  controls.enableZoom = false;      // 伪全屏：禁缩放/平移，点空隙回全局
+  controls.enablePan = false;
+  setFocusVisibility(id);
+  highlightState(id);
+  flyToState(id);
+}
+
+function exitToGlobal() {
+  focusStack.length = 0;
+  currentFocus = null;
+  focusMode = false;
+  controls.enableZoom = true;
+  controls.enablePan = true;
+  setFocusVisibility(null);
+  clearHighlight();
+  flyToGlobal();
+}
+
+function goBack() {
+  if (focusStack.length) {
+    const prev = focusStack.pop();
+    currentFocus = prev;
+    focusMode = true;
+    controls.enableZoom = false;
+    controls.enablePan = false;
+    setFocusVisibility(prev);
+    highlightState(prev);
+    flyToState(prev);
+  } else {
+    exitToGlobal();
+  }
+}
+
+// ---- hover ----
+renderer.domElement.addEventListener('pointermove', e => {
+  pointer.x = (e.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+// ---- 事件绑定 ----
+document.getElementById('btnEdit').onclick = enterEdit;
+document.getElementById('btnEndEdit').onclick = endEdit;
+document.getElementById('btnSave').onclick = saveWorkflow;
+document.getElementById('btnGlobal').onclick = exitToGlobal;
+document.getElementById('btnBack').onclick = goBack;
+document.getElementById('btnCancelSel').onclick = () => {
+  currentStateId = DATA.root;
+  refreshEditHighlight();
+  exitToGlobal();
+  info.textContent = '已取消选定，回到起点';
+};
+
+// ---- 动画循环 ----
+function animate() {
+  requestAnimationFrame(animate);
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(elemMeshes).filter(h => h.object.visible);
+  elemMeshes.forEach(m => { if (!editMode) m.scale.setScalar(1); });
+  if (hits.length && !editMode) {
+    hits[0].object.scale.setScalar(1.7);
+    info.textContent = `${hits[0].object.userData.name} · ${hits[0].object.userData.type}`;
+  } else if (!editMode) {
+    info.textContent = focusMode
+      ? '聚焦模式 · 旋转查看 · 点边缘空隙或「全局模式」返回'
+      : '旋转/缩放看分层 · 悬停看元素 · 点「进入编辑」开始选路径';
+  }
+  // 聚焦飞行动画：target + 相机一起平滑移动
+  if (fly) {
+    controls.target.lerp(fly.target, 0.12);
+    camera.position.lerp(fly.camPos, 0.12);
+    if (camera.position.distanceTo(fly.camPos) < 1 && controls.target.distanceTo(fly.target) < 1) {
+      controls.target.copy(fly.target);
+      camera.position.copy(fly.camPos);
+      fly = null;
+    }
+  }
+  controls.update();
+  composer.render();
+  labelRenderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+</script>
+
+<script>
+// 千牛记忆团爬取成果 —— 独立普通脚本，不依赖 three.js module / CDN / WebGL。
+// 即使上面的 3D 场景加载失败，这个面板也能照常读取数据团统计。
+(function () {
+  const CRAWL_NAVS = [["1.1","首页"],["1.2","常用"],["1.3","交易"],["1.4","商品"],["1.5","营销"],
+    ["1.6","推广"],["1.7","客服"],["1.8","店铺"],["1.9","私域"],["1.10","财务"],
+    ["1.11","金融"],["1.12","数据"],["1.13","服务"]];
+  const navOf = k => k.split('_')[0];
+  const $ = id => document.getElementById(id);
+
+  if (!$('btnCrawl') || !$('crawlPanel')) return;
+
+  $('btnCrawl').onclick = () => { $('crawlPanel').classList.add('show'); loadCrawl(); };
+  $('crawlClose').onclick = () => $('crawlPanel').classList.remove('show');
+  $('crawlPanel').addEventListener('click', e => {
+    if (e.target === $('crawlPanel')) $('crawlPanel').classList.remove('show');
+  });
+
+  async function loadCrawl() {
+    const foot = $('crawlFoot');
+    let deep = null, modal = null;
+    try { deep = await (await fetch('/crawl_deep_state.json', { cache: 'no-store' })).json(); }
+    catch (e) { foot.textContent = '⚠️ 读不到 /crawl_deep_state.json（' + e + '）'; }
+    try { modal = await (await fetch('/crawl_modal_state.json', { cache: 'no-store' })).json(); }
+    catch (e) { foot.textContent = '⚠️ 读不到 /crawl_modal_state.json（' + e + '）'; }
+
+    const d = (deep && deep.done) ? deep.done : {};
+    const m = (modal && modal.done) ? modal.done : {};
+
+    $('c_p1pages').textContent = Object.keys(d).length;
+    $('c_p1els').textContent = Object.values(d).reduce((a, b) => a + b, 0);
+    $('c_p2states').textContent = Object.keys(m).length;
+    $('c_p2modal').textContent = Object.keys(m).filter(k => (m[k].modals || 0) > 0).length;
+
+    const rows = $('crawlRows');
+    rows.innerHTML = '';
+    const grouped = {};
+    for (const k of Object.keys(m)) (grouped[navOf(k)] ||= []).push(k);
+    for (const [nid, label] of CRAWL_NAVS) {
+      const keys = grouped[nid] || [];
+      if (!keys.length) continue;
+      keys.sort((a, b) => a.localeCompare(b, 'zh', { numeric: true }));
+      const sEl = keys.reduce((a, k) => a + (d[k] || 0), 0);
+      const sTab = keys.reduce((a, k) => a + (m[k].tabs || 0), 0);
+      const sModal = keys.filter(k => (m[k].modals || 0) > 0).length;
+      const tr = document.createElement('tr');
+      tr.className = 'nav-row';
+      tr.innerHTML = '<td>' + label + '</td><td>' + keys.length + ' 个页面</td><td class="num">' + sEl + '</td><td class="num">' + sTab + '</td><td class="num">' + sModal + '</td>';
+      rows.appendChild(tr);
+    }
+    foot.textContent = '数据来自 crawl_deep_state.json / crawl_modal_state.json · 已合并去重进 membrane.db（101 url_key / 22238 元素）· 更新于 ' + new Date().toLocaleTimeString('zh-CN');
+  }
+})();
+</script>
+</body>
+</html>
